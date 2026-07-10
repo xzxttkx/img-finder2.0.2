@@ -26,14 +26,16 @@ jobs:
       - name: Install Buildozer
         run: pip install buildozer cython
 
+      - name: Remove broken system Android SDK
+        run: |
+          # GitHub's ubuntu-latest has a broken SDK at /usr/local/lib/android/sdk
+          # that lacks sdkmanager. Move it so buildozer downloads a clean one.
+          sudo mv /usr/local/lib/android/sdk /usr/local/lib/android/sdk.bak 2>/dev/null || true
+
       - name: Build APK
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           cd $GITHUB_WORKSPACE
-          # Unset GitHub's broken pre-installed SDK so buildozer downloads its own
-          unset ANDROID_SDK_ROOT
-          unset ANDROID_HOME
-          # Pipe 'yes' to auto-accept all SDK license prompts
           yes | buildozer android debug
 
       - name: Upload APK
