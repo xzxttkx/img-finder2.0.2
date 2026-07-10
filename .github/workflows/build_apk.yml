@@ -30,6 +30,9 @@ jobs:
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           cd $GITHUB_WORKSPACE
+          # Unset GitHub's broken pre-installed SDK so buildozer downloads its own
+          unset ANDROID_SDK_ROOT
+          unset ANDROID_HOME
           buildozer android debug
 
       - name: Upload APK
