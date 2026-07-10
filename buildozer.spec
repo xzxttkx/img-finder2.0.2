@@ -67,9 +67,9 @@ android.api = 33
 # (int) Minimum API your APK will support.
 android.minapi = 26
 
-# (int) Android SDK version to use
-android.sdk = 33
-android.sdk_path = /usr/local/lib/android/sdk
+# (int) Android SDK version to use (let buildozer auto-download)
+# android.sdk = 33
+# android.sdk_path = /usr/local/lib/android/sdk
 
 # (str) Android NDK version to use
 # android.ndk = 25b
