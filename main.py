@@ -40,19 +40,32 @@ def _is_android() -> bool:
 
 
 def _setup_cjk_font():
-    """Register a CJK-compatible font so Chinese text renders correctly.
+    """Register a CJK font. Strategy differs by platform:
 
-    Only needed on Windows where the default font lacks CJK glyphs.
-    On Android and other platforms, Kivy's bundled Roboto already handles CJK.
+    - Windows: use a system CJK font as the sole font (default Roboto lacks CJK).
+    - Android: register system CJK TTF as a *fallback* — Kivy's default Roboto
+      handles Latin, and the CJK font fills missing glyphs via comma-separated
+      font_name (SDL2_TTF font fallback). We skip TTC/OTF files because Kivy
+      on Android often can't render them.
     """
     import platform as pf
     system = pf.system()
 
-    # Android: Kivy/p4a bundles Roboto which supports CJK natively.
-    # Overriding with system fonts can break text rendering entirely because
-    # Android system fonts are often TTC files or fallback-only fonts that
-    # don't contain Latin glyphs. Don't touch fonts on Android.
     if _is_android():
+        # Android system CJK font — register as a fallback, NOT as primary.
+        # DroidSansFallback.ttf is a proper TTF with CJK glyphs.
+        # We use comma-separated font_name 'Roboto, CJK' so Roboto renders
+        # Latin and CJK fills in the Chinese characters.
+        for path in (
+            '/system/fonts/DroidSansFallback.ttf',
+            '/system/fonts/NotoSansSC-Regular.otf',
+        ):
+            if os.path.exists(path):
+                try:
+                    LabelBase.register(name='CJK', fn_regular=path)
+                    return True
+                except Exception:
+                    continue
         return False
 
     if system == 'Windows':
@@ -60,14 +73,15 @@ def _setup_cjk_font():
         for font_name in ('msyh.ttc', 'msyhbd.ttc', 'simhei.ttf', 'simsun.ttc'):
             fp = os.path.join(windir, 'Fonts', font_name)
             if os.path.exists(fp):
-                LabelBase.register(name='CJK_Default', fn_regular=fp)
+                LabelBase.register(name='CJK', fn_regular=fp)
                 return True
 
     return False
 
 _FONT_OK = _setup_cjk_font()
-# Fallback font name — use CJK if registered, else Kivy default (Roboto)
-FONT_NAME = 'CJK_Default' if _FONT_OK else None
+# On Android: 'Roboto, CJK' for font fallback (Latin → Roboto, CJK → system font)
+# On Windows: 'CJK' as sole font (system font has both Latin + CJK)
+FONT_NAME = 'Roboto, CJK' if (_FONT_OK and _is_android()) else ('CJK' if _FONT_OK else None)
 
 
 class MainScreenManager(ScreenManager):
