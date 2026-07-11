@@ -51,7 +51,7 @@ def _setup_cjk_font():
 
     if _is_android():
         # 1st priority: bundled font in assets/ (has both Latin + CJK)
-        asset_font = os.path.join(os.path.dirname(__file__), 'assets', 'CJKFont.otf')
+        asset_font = os.path.join(os.path.dirname(__file__), 'assets', 'CJKFont.ttf')
         if os.path.exists(asset_font):
             LabelBase.register(name='CJK', fn_regular=asset_font)
             return True
