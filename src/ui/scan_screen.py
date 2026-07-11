@@ -10,17 +10,15 @@ from kivy.uix.label import Label
 from kivy.uix.slider import Slider
 from kivy.uix.progressbar import ProgressBar
 from kivy.uix.popup import Popup
-from kivy.uix.textinput import TextInput
 from kivy.properties import StringProperty, NumericProperty, BooleanProperty
 from kivy.clock import Clock
 from kivy.app import App
 from kivy.utils import platform
 
 from ..scanner import ImageScanner, ImageFile
-from ..storage import get_default_scan_path, is_android_scoped_storage, create_scanner
+from ..storage import get_default_scan_path, create_scanner
 from ..db import ScanCache
 from ..detector import DuplicateDetector, DuplicateReport
-from ..exporter import ReportExporter
 
 KV = '''
 <ScanScreen>:
@@ -36,35 +34,35 @@ KV = '''
         height: dp(40)
         color: 0.1, 0.45, 0.82, 1
 
-    # Path selection row — taller on mobile so long paths wrap instead of truncating
+    # Folder summary row — shows how many folders are selected
     BoxLayout:
         size_hint_y: None
-        height: dp(54)
+        height: dp(40)
         spacing: dp(6)
         Label:
-            text: '目录:'
+            text: '文件夹:'
             size_hint_x: None
-            width: dp(44)
+            width: dp(54)
             font_size: dp(13)
             text_size: self.size
             halign: 'right'
             valign: 'middle'
         Label:
-            id: path_label
-            text: root.scan_path
-            font_size: dp(11)
+            id: folder_label
+            text: root.folder_text
+            font_size: dp(12)
             text_size: self.size
             halign: 'left'
             valign: 'middle'
             shorten: True
-            shorten_from: 'center'
-            color: 0.4, 0.4, 0.4, 1
+            shorten_from: 'right'
+            color: 0.3, 0.5, 0.9, 1
         Button:
-            text: '选'
+            text: '选择'
             size_hint_x: None
-            width: dp(48)
-            font_size: dp(13)
-            on_release: root.open_path_picker()
+            width: dp(52)
+            font_size: dp(12)
+            on_release: app.root.current = 'folder_list'
 
     # Threshold slider
     BoxLayout:
@@ -108,6 +106,20 @@ KV = '''
         color: 1, 1, 1, 1
         on_release: root.start_scan()
         disabled: root.scanning
+
+    # Cancel button (only visible during scan)
+    Button:
+        id: cancel_button
+        text: '取消扫描'
+        size_hint_y: None
+        height: dp(36)
+        font_size: dp(13)
+        background_normal: ''
+        background_color: 0.9, 0.3, 0.3, 1
+        color: 1, 1, 1, 1
+        on_release: root.cancel_scan()
+        opacity: 1 if root.scanning else 0
+        disabled: not root.scanning
 
     # Progress
     BoxLayout:
@@ -200,7 +212,7 @@ KV = '''
 class ScanScreen(BoxLayout, Screen):
     """Main scan screen where users configure and run duplicate detection."""
 
-    scan_path = StringProperty('')
+    folder_text = StringProperty('尚未选择文件夹')
     threshold = NumericProperty(10)
     progress = NumericProperty(0)
     progress_text = StringProperty('')
@@ -212,14 +224,15 @@ class ScanScreen(BoxLayout, Screen):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._scanner = None  # Created per-scan to pick the right backend
+        self._scanner = None
         self._detector: DuplicateDetector | None = None
         self._cache: ScanCache | None = None
         self._report: DuplicateReport | None = None
         self._scan_thread: threading.Thread | None = None
+        self._selected_folders: list[str] = []
 
-        # Determine default scan path based on platform
-        self.scan_path = self._get_default_path()
+        # Set default single path for first launch (before folder list is ready)
+        self._set_default_paths()
 
         # Initialize cache when app data dir is available
         Clock.schedule_once(self._init_cache, 0.5)
@@ -228,9 +241,28 @@ class ScanScreen(BoxLayout, Screen):
     def _is_android(self) -> bool:
         return platform == 'android'
 
-    def _get_default_path(self) -> str:
-        """Return the default scan path for this platform."""
-        return get_default_scan_path()
+    def _set_default_paths(self):
+        """Set initial default path(s) in case user doesn't go through folder list."""
+        default = get_default_scan_path()
+        if default:
+            self._selected_folders = [default]
+            self.folder_text = os.path.basename(default) or default
+
+    def set_selected_folders(self, folders: list[str]):
+        """Called by FolderListScreen with the user's checked folders."""
+        self._selected_folders = folders
+        if len(folders) == 1:
+            self.folder_text = os.path.basename(folders[0])
+        elif len(folders) > 1:
+            names = ', '.join(os.path.basename(f) for f in folders[:3])
+            if len(folders) > 3:
+                names += f' 等{len(folders)}个'
+            self.folder_text = names
+        else:
+            self.folder_text = '尚未选择文件夹'
+
+        if hasattr(self, 'ids') and 'folder_label' in self.ids:
+            self.ids.folder_label.text = self.folder_text
 
     def _init_cache(self, dt):
         app = App.get_running_app()
@@ -239,212 +271,22 @@ class ScanScreen(BoxLayout, Screen):
 
     def on_threshold_change(self, value):
         self.threshold = int(value)
-        # Update label via ids
         if hasattr(self, 'ids') and 'threshold_label' in self.ids:
             self.ids.threshold_label.text = str(int(value))
-
-    def open_path_picker(self):
-        """Open a path picker dialog.
-
-        On Android: shows a text input popup (Kivy's FileChooser doesn't work
-        well with scoped storage). The user can type/paste a path or use the
-        default DCIM/Pictures path.
-        On Desktop: uses Kivy's native FileChooserListView.
-        """
-        # On Android, use a text input dialog instead of FileChooser
-        if platform == 'android':
-            self._open_android_path_picker()
-        else:
-            self._open_desktop_file_chooser()
-
-    def _open_android_path_picker(self):
-        """Android path picker: text input with common path suggestions."""
-        content = BoxLayout(orientation='vertical', spacing='6dp', padding='8dp')
-
-        content.add_widget(Label(
-            text='输入扫描目录路径:',
-            size_hint_y=None, height='26dp',
-            halign='left', valign='middle',
-            font_size='13sp',
-            color=(0.2, 0.2, 0.2, 1)
-        ))
-
-        path_input = TextInput(
-            text=self.scan_path,
-            multiline=False,
-            size_hint_y=None,
-            height='38dp',
-            font_size='13sp'
-        )
-        content.add_widget(path_input)
-
-        # Quick-select buttons — each is a row: [icon] folder_name  |  path_hint
-        quick_paths = BoxLayout(
-            orientation='vertical',
-            size_hint_y=None,
-            height='132dp',
-            spacing='4dp'
-        )
-        quick_paths.add_widget(Label(
-            text='快捷路径:',
-            size_hint_y=None, height='22dp',
-            halign='left', valign='middle',
-            font_size='11sp',
-            color=(0.5, 0.5, 0.5, 1)
-        ))
-
-        android_paths = [
-            ('📷  DCIM', '/storage/emulated/0/DCIM'),
-            ('🖼  Pictures', '/storage/emulated/0/Pictures'),
-            ('📥  Download', '/storage/emulated/0/Download'),
-        ]
-
-        for label, p in android_paths:
-            # Use a horizontal row: folder name (bold) | path (smaller, gray)
-            row = BoxLayout(
-                orientation='horizontal',
-                size_hint_y=None,
-                height='32dp',
-                spacing='4dp'
-            )
-            # Folder name label
-            name_lbl = Label(
-                text=label,
-                size_hint_x=0.35,
-                halign='left', valign='middle',
-                font_size='12sp',
-                color=(0.15, 0.45, 0.82, 1),
-                bold=True
-            )
-            name_lbl.text_size = (None, None)
-            row.add_widget(name_lbl)
-            # Path label
-            path_lbl = Label(
-                text=p,
-                size_hint_x=0.65,
-                halign='left', valign='middle',
-                font_size='10sp',
-                color=(0.5, 0.5, 0.5, 1)
-            )
-            row.add_widget(path_lbl)
-            # Make the whole row tappable via a transparent button overlay
-            tap = Button(
-                text='',
-                size_hint_x=1,
-                background_normal='',
-                background_color=(0.95, 0.95, 0.95, 1),
-                opacity=1
-            )
-            tap.bind(on_release=lambda x, path=p: setattr(path_input, 'text', path))
-            row.add_widget(tap)
-            quick_paths.add_widget(row)
-
-        content.add_widget(quick_paths)
-
-        # Buttons row
-        buttons = BoxLayout(
-            size_hint_y=None, height='38dp', spacing='8dp'
-        )
-
-        popup = None  # Forward ref for closure
-
-        def on_confirm(instance):
-            path = path_input.text.strip()
-            if path:
-                self.scan_path = path
-                self.ids.path_label.text = path
-            popup.dismiss() if popup else None
-
-        buttons.add_widget(Button(
-            text='取消',
-            font_size='13sp',
-            background_normal='',
-            background_color=(0.6, 0.6, 0.6, 1),
-            color=(1, 1, 1, 1),
-            on_release=lambda x: popup.dismiss() if popup else None
-        ))
-        buttons.add_widget(Button(
-            text='确认',
-            font_size='13sp',
-            background_normal='',
-            background_color=(0.1, 0.45, 0.82, 1),
-            color=(1, 1, 1, 1),
-            on_release=on_confirm
-        ))
-        content.add_widget(buttons)
-
-        popup = Popup(
-            title='选择扫描目录',
-            content=content,
-            size_hint=(0.9, 0.5),
-        )
-        popup.open()
-
-    def _open_desktop_file_chooser(self):
-        """Desktop file chooser using Kivy's FileChooserListView."""
-        from kivy.uix.filechooser import FileChooserListView
-
-        start_path = self.scan_path or os.path.expanduser('~')
-
-        chooser_layout = BoxLayout(orientation='vertical', spacing=8)
-        filechooser = FileChooserListView(
-            path=start_path,
-            dirselect=True,
-            filters=[''],
-        )
-        chooser_layout.add_widget(filechooser)
-
-        btn_layout = BoxLayout(size_hint_y=None, height='48dp', spacing=8)
-
-        popup = None  # Forward ref for closure
-
-        def on_select(instance):
-            selected = filechooser.selection
-            if selected:
-                self.scan_path = selected[0]
-                self.ids.path_label.text = selected[0]
-            popup.dismiss() if popup else None
-
-        btn_cancel = Button(text='取消', on_release=lambda x: popup.dismiss() if popup else None)
-        btn_select = Button(
-            text='选择此文件夹',
-            background_normal='',
-            background_color=(0.1, 0.45, 0.82, 1),
-            color=(1, 1, 1, 1),
-            on_release=on_select
-        )
-        btn_layout.add_widget(btn_cancel)
-        btn_layout.add_widget(btn_select)
-        chooser_layout.add_widget(btn_layout)
-
-        popup = Popup(
-            title='选择扫描目录',
-            content=chooser_layout,
-            size_hint=(0.9, 0.8),
-        )
-        popup.open()
 
     def start_scan(self):
         """Start the scan in a background thread."""
         if self.scanning:
             return
 
-        # On Android with scoped storage, the directory may not be directly
-        # readable via os.path — MediaStore will be used instead.
-        # On desktop, require a valid existing directory.
-        if not self._is_android and (not self.scan_path or not os.path.isdir(self.scan_path)):
+        if not self._selected_folders:
             popup = Popup(
-                title='错误',
-                content=Label(text='请选择一个有效的目录'),
-                size_hint=(0.6, 0.3),
+                title='提示',
+                content=Label(text='请先点击"选择"来勾选要扫描的文件夹'),
+                size_hint=(0.7, 0.35),
             )
             popup.open()
             return
-
-        if self._is_android and (not self.scan_path):
-            # On Android, default to DCIM if path is empty
-            self.scan_path = get_default_scan_path()
-            self.ids.path_label.text = self.scan_path
 
         self.scanning = True
         self.has_results = False
@@ -458,42 +300,58 @@ class ScanScreen(BoxLayout, Screen):
         )
         self._scan_thread.start()
 
+    def cancel_scan(self):
+        """Cancel the current scan."""
+        if self._scanner and hasattr(self._scanner, 'cancel'):
+            self._scanner.cancel()
+        if self._detector:
+            self._detector.cancel()
+
     def _run_scan(self):
-        """Background scan worker."""
+        """Background scan worker — iterates over all selected folders."""
         try:
-            # Phase 1: Scan files using the appropriate scanner for this platform
-            def on_scan_progress(count, current_path):
-                Clock.schedule_once(lambda dt: self._update_scan_progress(count, current_path))
+            all_images: list[ImageFile] = []
+            total_folders = len(self._selected_folders)
+            seen_paths: set[str] = set()
 
-            if self._is_android:
-                # Use MediaStore-based scanner on Android (scoped-storage safe)
-                self._scanner = create_scanner()
-                # MediaStore returns ImageFile-compatible objects
-                images = self._scanner.scan(self.scan_path, on_scan_progress)
-            else:
-                # Use filesystem scanner on desktop
-                self._scanner = ImageScanner()
-                images = self._scanner.scan(self.scan_path, on_scan_progress)
+            for fi, folder in enumerate(self._selected_folders):
+                if self._scanner and hasattr(self._scanner, '_cancelled') and self._scanner._cancelled:
+                    break
 
-            if hasattr(self._scanner, '_cancelled') and self._scanner._cancelled:
+                Clock.schedule_once(
+                    lambda dt, i=fi, f=folder: self._update_folder_progress(i, f, total_folders)
+                )
+
+                def on_scan_progress(count, current_path):
+                    Clock.schedule_once(
+                        lambda dt, c=count, p=current_path: self._update_scan_progress(c, p)
+                    )
+
+                if self._is_android:
+                    scanner = create_scanner()
+                    images = scanner.scan(folder, on_scan_progress)
+                else:
+                    scanner = ImageScanner()
+                    images = scanner.scan(folder, on_scan_progress)
+
+                # Deduplicate by path across folders
+                for img in images:
+                    if img.path not in seen_paths:
+                        seen_paths.add(img.path)
+                        if hasattr(img, 'path'):
+                            all_images.append(ImageFile(
+                                path=img.path,
+                                file_size=img.file_size,
+                                modified_time=img.modified_time
+                            ))
+
+            if hasattr(scanner, '_cancelled') and scanner._cancelled:
                 Clock.schedule_once(lambda dt: self._on_scan_cancelled())
                 return
 
-            if not images:
+            if not all_images:
                 Clock.schedule_once(lambda dt: self._on_no_images())
                 return
-
-            # On Android, convert storage.ImageFile objects to scanner.ImageFile
-            # if needed for DuplicateDetector compatibility
-            if self._is_android and images:
-                converted = []
-                for img in images:
-                    converted.append(ImageFile(
-                        path=img.path,
-                        file_size=img.file_size,
-                        modified_time=img.modified_time
-                    ))
-                images = converted
 
             # Phase 2: Detect duplicates
             if self._cache:
@@ -505,20 +363,22 @@ class ScanScreen(BoxLayout, Screen):
                 Clock.schedule_once(lambda dt: self._update_detect_progress(phase, current, total))
 
             self._report = self._detector.detect(
-                images,
+                all_images,
                 threshold=self.threshold,
                 on_progress=on_detect_progress
             )
 
-            # Phase 3: Update UI with results
             Clock.schedule_once(lambda dt: self._on_scan_complete())
 
         except Exception as e:
             Clock.schedule_once(lambda dt: self._on_scan_error(str(e)))
 
+    def _update_folder_progress(self, idx: int, folder: str, total: int):
+        name = os.path.basename(folder)
+        self.status_text = f'扫描文件夹 {idx+1}/{total}: {name}'
+
     def _update_scan_progress(self, count: int, current_path: str):
         self.progress_text = f'已找到 {count} 张图片...'
-        self.status_text = current_path if current_path else ''
 
     def _update_detect_progress(self, phase: str, current: int, total: int):
         if total > 0:
@@ -542,7 +402,7 @@ class ScanScreen(BoxLayout, Screen):
     def _on_no_images(self):
         self.scanning = False
         self.progress = 100
-        self.status_text = '选中的目录中没有找到图片文件'
+        self.status_text = '选中的文件夹中没有找到图片文件'
         self.progress_text = ''
 
     def _on_scan_cancelled(self):

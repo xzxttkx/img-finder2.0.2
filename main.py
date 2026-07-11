@@ -99,6 +99,7 @@ class DuplicateImageFinderApp(App):
         from src.ui.scan_screen import ScanScreen, KV as SCAN_KV
         from src.ui.results_screen import ResultsScreen, KV as RESULTS_KV, GROUP_CARD_KV
         from src.ui.preview_screen import PreviewScreen, KV as PREVIEW_KV
+        from src.ui.folder_list_screen import FolderListScreen, KV as FOLDER_KV
 
         # Apply KV rules (must be before widget creation)
         from kivy.lang import Builder
@@ -114,12 +115,15 @@ class DuplicateImageFinderApp(App):
     font_name: '{FONT_NAME}'
 <TextInput>:
     font_name: '{FONT_NAME}'
+<CheckBox>:
+    font_name: '{FONT_NAME}'
 ''')
 
         Builder.load_string(SCAN_KV)
         Builder.load_string(RESULTS_KV)
         Builder.load_string(GROUP_CARD_KV)
         Builder.load_string(PREVIEW_KV)
+        Builder.load_string(FOLDER_KV)
 
         # Set window properties
         Window.clearcolor = COLORS['background']
@@ -128,12 +132,13 @@ class DuplicateImageFinderApp(App):
         sm = MainScreenManager()
 
         # Add screens
+        sm.add_widget(FolderListScreen(name='folder_list'))
         sm.add_widget(ScanScreen(name='scan'))
         sm.add_widget(ResultsScreen(name='results'))
         sm.add_widget(PreviewScreen(name='preview'))
 
-        # Start on scan screen
-        sm.current = 'scan'
+        # Start on folder list screen
+        sm.current = 'folder_list'
 
         # Request Android permissions at startup
         self._request_android_permissions()
@@ -192,6 +197,93 @@ class DuplicateImageFinderApp(App):
             request_permissions(permissions)
         except (ImportError, Exception):
             pass
+
+        # On Android 11+, check MANAGE_EXTERNAL_STORAGE and prompt to enable
+        self._check_manage_storage()
+
+    def _check_manage_storage(self):
+        """On Android 11+, verify MANAGE_EXTERNAL_STORAGE is granted.
+        If not, show a dialog that redirects to system settings."""
+        if platform != 'android':
+            return
+
+        api_level = 0
+        try:
+            from android.os import Build
+            api_level = Build.VERSION.SDK_INT
+        except Exception:
+            return
+
+        if api_level < 30:
+            return
+
+        try:
+            from jnius import autoclass
+            Environment = autoclass('android.os.Environment')
+            if Environment.isExternalStorageManager():
+                return  # Already granted
+
+            # Show dialog asking user to enable it
+            from kivy.clock import Clock
+            Clock.schedule_once(lambda dt: self._show_manage_storage_dialog(), 2.0)
+        except Exception:
+            pass
+
+    def _show_manage_storage_dialog(self):
+        """Dialog: explain why MANAGE_EXTERNAL_STORAGE is needed and open settings."""
+        from kivy.uix.popup import Popup
+        from kivy.uix.boxlayout import BoxLayout
+        from kivy.uix.button import Button
+        from kivy.uix.label import Label
+
+        content = BoxLayout(orientation='vertical', spacing='10dp', padding='10dp')
+        content.add_widget(Label(
+            text='此应用需要"管理所有文件"权限\n'
+                 '才能扫描和删除重复图片。\n\n'
+                 '点击"前往设置" > 找到本应用 >\n'
+                 '打开"允许管理所有文件"',
+            halign='center',
+            font_size='14sp'
+        ))
+
+        btns = BoxLayout(size_hint_y=None, height='40dp', spacing='8dp')
+
+        def open_settings(instance):
+            try:
+                from jnius import autoclass
+                Intent = autoclass('android.content.Intent')
+                Settings = autoclass('android.provider.Settings')
+                Uri = autoclass('android.net.Uri')
+                PythonActivity = autoclass('org.kivy.android.PythonActivity')
+                activity = PythonActivity.mActivity
+
+                intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                uri_str = f'package:{activity.getPackageName()}'
+                intent.setData(Uri.parse(uri_str))
+                activity.startActivity(intent)
+            except Exception:
+                pass
+            popup.dismiss()
+
+        btns.add_widget(Button(
+            text='稍后再说',
+            on_release=lambda x: popup.dismiss()
+        ))
+        btns.add_widget(Button(
+            text='前往设置',
+            on_release=open_settings,
+            background_normal='',
+            background_color=(0.1, 0.45, 0.82, 1),
+            color=(1, 1, 1, 1)
+        ))
+        content.add_widget(btns)
+
+        popup = Popup(
+            title='需要权限',
+            content=content,
+            size_hint=(0.85, 0.5),
+        )
+        popup.open()
 
     def on_start(self):
         """Called after build(), when the app is fully initialized."""

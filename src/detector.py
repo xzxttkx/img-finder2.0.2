@@ -1,5 +1,6 @@
 """Duplicate detection core logic. Groups images by exact (MD5) and perceptual (dHash) similarity."""
 
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
@@ -132,12 +133,23 @@ class DuplicateDetector:
         on_progress: Optional[Callable[[str, int, int], None]],
         total: int
     ):
-        """Compute MD5 and dHash for all images, using cache when available."""
+        """Compute MD5 and dHash for all images, using cache when available.
+
+        Size-based pre-filter: images with unique file sizes skip MD5
+        computation since they cannot have an exact duplicate. dHash is
+        still computed for all images (perceptual duplicates can exist
+        across different file sizes).
+        """
         engine = HashEngine()
+
+        # Pre-compute size frequency to skip MD5 for unique-sized images
+        size_counts = Counter(img.file_size for img in images)
 
         for i, img in enumerate(images):
             if self._cancelled:
                 break
+
+            needs_md5 = size_counts[img.file_size] > 1
 
             # Check cache first
             if self.cache and not self.cache.is_stale(img.path, img.modified_time):
@@ -146,13 +158,14 @@ class DuplicateDetector:
                     img.md5_hash = cached['md5']
                     img.dhash = cached['dhash']
 
-            # Compute MD5 if needed
-            if not img.md5_hash:
+            # Compute MD5 only if file size is shared with other images
+            if needs_md5 and not img.md5_hash:
                 if on_progress:
                     on_progress(f"计算MD5: {i+1}/{total}", i + 1, total)
                 img.md5_hash = engine.md5_hash(img.path)
 
-            # Compute dHash if needed (skip if we already have it)
+            # Compute dHash if needed (for all images — perceptual similarity
+            # can cross file sizes)
             if not img.dhash:
                 if on_progress:
                     on_progress(f"计算感知哈希: {i+1}/{total}", i + 1, total)
