@@ -32,6 +32,16 @@ jobs:
           # that lacks sdkmanager. Move it so buildozer downloads a clean one.
           sudo mv /usr/local/lib/android/sdk /usr/local/lib/android/sdk.bak 2>/dev/null || true
 
+      - name: Download CJK font for APK
+        run: |
+          mkdir -p assets
+          # Download Google Noto Sans SC (supports both Latin + CJK)
+          curl -L -o /tmp/cjk.zip \
+            "https://github.com/googlefonts/noto-cjk/releases/download/Sans2.004/03_NotoSansCJKsc.zip"
+          unzip -d /tmp/cjk /tmp/cjk.zip
+          cp /tmp/cjk/*/NotoSansCJKsc-Regular.otf assets/CJKFont.otf
+          ls -lh assets/CJKFont.otf
+
       - name: Build APK
         run: |
           export PATH="$HOME/.local/bin:$PATH"

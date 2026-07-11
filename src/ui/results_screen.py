@@ -80,25 +80,26 @@ def _android_delete_file(path: str) -> bool:
 KV = '''
 <ResultsScreen>:
     orientation: 'vertical'
-    padding: dp(12)
-    spacing: dp(8)
+    padding: dp(8)
+    spacing: dp(4)
 
     # Header
     BoxLayout:
         size_hint_y: None
-        height: dp(44)
-        spacing: dp(8)
+        height: dp(38)
+        spacing: dp(6)
         Button:
             text: '< 返回'
             size_hint_x: None
-            width: dp(80)
+            width: dp(64)
+            font_size: dp(12)
             background_normal: ''
             background_color: 0.6, 0.6, 0.6, 1
             color: 1, 1, 1, 1
             on_release: app.root.current = 'scan'
         Label:
-            text: '重复图片 (' + str(root.total_groups) + ' 组)'
-            font_size: dp(18)
+            text: '重复 (' + str(root.total_groups) + ' 组)'
+            font_size: dp(15)
             size_hint_x: 1
             halign: 'left'
             valign: 'middle'
@@ -108,8 +109,8 @@ KV = '''
     BoxLayout:
         id: tab_bar
         size_hint_y: None
-        height: dp(40)
-        spacing: dp(4)
+        height: dp(34)
+        spacing: dp(3)
 
     # Scrollable results list
     ScrollView:
@@ -126,18 +127,20 @@ KV = '''
     # Bottom action bar
     BoxLayout:
         size_hint_y: None
-        height: dp(48)
-        spacing: dp(8)
+        height: dp(40)
+        spacing: dp(6)
         Button:
-            text: '导出报告'
+            text: '导出'
             size_hint_x: 1
+            font_size: dp(12)
             background_normal: ''
             background_color: 0.3, 0.3, 0.3, 1
             color: 1, 1, 1, 1
             on_release: root.export_report()
         Button:
-            text: '一键清理建议'
+            text: '一键清理'
             size_hint_x: 1
+            font_size: dp(12)
             background_normal: ''
             background_color: 0.82, 0.15, 0.15, 1
             color: 1, 1, 1, 1

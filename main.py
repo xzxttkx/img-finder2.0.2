@@ -40,26 +40,23 @@ def _is_android() -> bool:
 
 
 def _setup_cjk_font():
-    """Register a CJK font. Strategy differs by platform:
+    """Register a CJK font that covers both Latin and Chinese.
 
-    - Windows: use a system CJK font as the sole font (default Roboto lacks CJK).
-    - Android: register system CJK TTF as a *fallback* — Kivy's default Roboto
-      handles Latin, and the CJK font fills missing glyphs via comma-separated
-      font_name (SDL2_TTF font fallback). We skip TTC/OTF files because Kivy
-      on Android often can't render them.
+    - Android: use bundled assets/CJKFont.otf (downloaded during CI build).
+      Falls back to system DroidSansFallback.ttf on older builds.
+    - Windows: use system CJK font (Microsoft YaHei etc.).
     """
     import platform as pf
     system = pf.system()
 
     if _is_android():
-        # Android system CJK font — register as a fallback, NOT as primary.
-        # DroidSansFallback.ttf is a proper TTF with CJK glyphs.
-        # We use comma-separated font_name 'Roboto, CJK' so Roboto renders
-        # Latin and CJK fills in the Chinese characters.
-        for path in (
-            '/system/fonts/DroidSansFallback.ttf',
-            '/system/fonts/NotoSansSC-Regular.otf',
-        ):
+        # 1st priority: bundled font in assets/ (has both Latin + CJK)
+        asset_font = os.path.join(os.path.dirname(__file__), 'assets', 'CJKFont.otf')
+        if os.path.exists(asset_font):
+            LabelBase.register(name='CJK', fn_regular=asset_font)
+            return True
+        # 2nd: try system TTF (may be CJK-only, but better than nothing)
+        for path in ('/system/fonts/DroidSansFallback.ttf',):
             if os.path.exists(path):
                 try:
                     LabelBase.register(name='CJK', fn_regular=path)
@@ -79,9 +76,10 @@ def _setup_cjk_font():
     return False
 
 _FONT_OK = _setup_cjk_font()
-# On Android: 'Roboto, CJK' for font fallback (Latin → Roboto, CJK → system font)
-# On Windows: 'CJK' as sole font (system font has both Latin + CJK)
-FONT_NAME = 'Roboto, CJK' if (_FONT_OK and _is_android()) else ('CJK' if _FONT_OK else None)
+# On Android with bundled CJK font: use it as primary (it has both Latin + CJK)
+# On Windows: use CJK font as primary
+# If no font found: None → use Kivy default Roboto
+FONT_NAME = 'CJK' if _FONT_OK else None
 
 
 class MainScreenManager(ScreenManager):

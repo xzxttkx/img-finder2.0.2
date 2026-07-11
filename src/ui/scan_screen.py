@@ -25,53 +25,57 @@ from ..exporter import ReportExporter
 KV = '''
 <ScanScreen>:
     orientation: 'vertical'
-    padding: dp(16)
-    spacing: dp(12)
+    padding: dp(10)
+    spacing: dp(6)
 
     # Title
     Label:
         text: '\\U0001F50D 重复图片查找器'
-        font_size: dp(24)
+        font_size: dp(20)
         size_hint_y: None
-        height: dp(48)
+        height: dp(40)
         color: 0.1, 0.45, 0.82, 1
 
-    # Path selection row
+    # Path selection row — taller on mobile so long paths wrap instead of truncating
     BoxLayout:
         size_hint_y: None
-        height: dp(48)
-        spacing: dp(8)
+        height: dp(54)
+        spacing: dp(6)
         Label:
-            text: '扫描目录:'
+            text: '目录:'
             size_hint_x: None
-            width: dp(80)
+            width: dp(44)
+            font_size: dp(13)
             text_size: self.size
             halign: 'right'
             valign: 'middle'
         Label:
             id: path_label
             text: root.scan_path
+            font_size: dp(11)
             text_size: self.size
             halign: 'left'
             valign: 'middle'
             shorten: True
-            shorten_from: 'right'
+            shorten_from: 'center'
             color: 0.4, 0.4, 0.4, 1
         Button:
-            text: '选择'
+            text: '选'
             size_hint_x: None
-            width: dp(72)
+            width: dp(48)
+            font_size: dp(13)
             on_release: root.open_path_picker()
 
     # Threshold slider
     BoxLayout:
         size_hint_y: None
-        height: dp(48)
-        spacing: dp(8)
+        height: dp(40)
+        spacing: dp(6)
         Label:
-            text: '相似度阈值:'
+            text: '阈值:'
             size_hint_x: None
-            width: dp(80)
+            width: dp(44)
+            font_size: dp(13)
             text_size: self.size
             halign: 'right'
             valign: 'middle'
@@ -86,7 +90,8 @@ KV = '''
             id: threshold_label
             text: str(root.threshold)
             size_hint_x: None
-            width: dp(36)
+            width: dp(28)
+            font_size: dp(13)
             text_size: self.size
             halign: 'center'
             valign: 'middle'
@@ -96,8 +101,8 @@ KV = '''
         id: scan_button
         text: '\\U0001F50D 开始扫描'
         size_hint_y: None
-        height: dp(56)
-        font_size: dp(18)
+        height: dp(48)
+        font_size: dp(16)
         background_normal: ''
         background_color: 0.1, 0.45, 0.82, 1
         color: 1, 1, 1, 1
@@ -107,8 +112,8 @@ KV = '''
     # Progress
     BoxLayout:
         size_hint_y: None
-        height: dp(36)
-        spacing: dp(8)
+        height: dp(30)
+        spacing: dp(6)
         ProgressBar:
             id: progress_bar
             value: root.progress
@@ -117,7 +122,8 @@ KV = '''
             id: progress_label
             text: root.progress_text
             size_hint_x: None
-            width: dp(120)
+            width: dp(110)
+            font_size: dp(11)
             text_size: self.size
             halign: 'left'
             valign: 'middle'

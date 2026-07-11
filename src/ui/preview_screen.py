@@ -22,12 +22,13 @@ KV = '''
     # Header with navigation
     BoxLayout:
         size_hint_y: None
-        height: dp(40)
-        spacing: dp(8)
+        height: dp(36)
+        spacing: dp(6)
         Button:
             text: '< 返回'
             size_hint_x: None
-            width: dp(72)
+            width: dp(64)
+            font_size: dp(12)
             background_normal: ''
             background_color: 0.5, 0.5, 0.5, 1
             color: 1, 1, 1, 1
@@ -39,7 +40,7 @@ KV = '''
             halign: 'center'
             valign: 'middle'
             text_size: self.size
-            font_size: '14sp'
+            font_size: '13sp'
 
     # Side-by-side image comparison
     BoxLayout:
@@ -100,12 +101,13 @@ KV = '''
     # Action buttons
     BoxLayout:
         size_hint_y: None
-        height: dp(44)
-        spacing: dp(8)
+        height: dp(38)
+        spacing: dp(4)
 
         Button:
             text: '< 上一张'
             size_hint_x: 1
+            font_size: dp(11)
             background_normal: ''
             background_color: 0.5, 0.5, 0.5, 1
             color: 1, 1, 1, 1
@@ -115,6 +117,7 @@ KV = '''
         Button:
             text: '✓ 保留'
             size_hint_x: 1
+            font_size: dp(11)
             background_normal: ''
             background_color: 0.3, 0.7, 0.3, 1
             color: 1, 1, 1, 1
@@ -123,6 +126,7 @@ KV = '''
         Button:
             text: '✗ 删除'
             size_hint_x: 1
+            font_size: dp(11)
             background_normal: ''
             background_color: 0.9, 0.3, 0.3, 1
             color: 1, 1, 1, 1
