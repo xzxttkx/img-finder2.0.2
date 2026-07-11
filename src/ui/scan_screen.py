@@ -259,13 +259,13 @@ class ScanScreen(BoxLayout, Screen):
 
     def _open_android_path_picker(self):
         """Android path picker: text input with common path suggestions."""
-        content = BoxLayout(orientation='vertical', spacing='8dp', padding='8dp')
+        content = BoxLayout(orientation='vertical', spacing='6dp', padding='8dp')
 
         content.add_widget(Label(
-            text='输入或粘贴扫描目录路径:',
-            size_hint_y=None, height='30dp',
+            text='输入扫描目录路径:',
+            size_hint_y=None, height='26dp',
             halign='left', valign='middle',
-            font_size='14sp',
+            font_size='13sp',
             color=(0.2, 0.2, 0.2, 1)
         ))
 
@@ -273,53 +273,77 @@ class ScanScreen(BoxLayout, Screen):
             text=self.scan_path,
             multiline=False,
             size_hint_y=None,
-            height='40dp',
-            font_size='14sp'
+            height='38dp',
+            font_size='13sp'
         )
         content.add_widget(path_input)
 
-        # Quick-select buttons for common Android paths
+        # Quick-select buttons — each is a row: [icon] folder_name  |  path_hint
         quick_paths = BoxLayout(
             orientation='vertical',
             size_hint_y=None,
-            height='120dp',
+            height='132dp',
             spacing='4dp'
         )
         quick_paths.add_widget(Label(
             text='快捷路径:',
-            size_hint_y=None, height='24dp',
+            size_hint_y=None, height='22dp',
             halign='left', valign='middle',
-            font_size='12sp',
+            font_size='11sp',
             color=(0.5, 0.5, 0.5, 1)
         ))
 
         android_paths = [
-            ('📷 DCIM', '/storage/emulated/0/DCIM'),
-            ('🖼 Pictures', '/storage/emulated/0/Pictures'),
-            ('📥 Download', '/storage/emulated/0/Download'),
+            ('📷  DCIM', '/storage/emulated/0/DCIM'),
+            ('🖼  Pictures', '/storage/emulated/0/Pictures'),
+            ('📥  Download', '/storage/emulated/0/Download'),
         ]
 
         for label, p in android_paths:
-            btn = Button(
-                text=f'  {label}:  {p}',
+            # Use a horizontal row: folder name (bold) | path (smaller, gray)
+            row = BoxLayout(
+                orientation='horizontal',
                 size_hint_y=None,
-                height='28dp',
-                font_size='11sp',
-                halign='left',
-                valign='middle',
+                height='32dp',
+                spacing='4dp'
+            )
+            # Folder name label
+            name_lbl = Label(
+                text=label,
+                size_hint_x=0.35,
+                halign='left', valign='middle',
+                font_size='12sp',
+                color=(0.15, 0.45, 0.82, 1),
+                bold=True
+            )
+            name_lbl.text_size = (None, None)
+            row.add_widget(name_lbl)
+            # Path label
+            path_lbl = Label(
+                text=p,
+                size_hint_x=0.65,
+                halign='left', valign='middle',
+                font_size='10sp',
+                color=(0.5, 0.5, 0.5, 1)
+            )
+            row.add_widget(path_lbl)
+            # Make the whole row tappable via a transparent button overlay
+            tap = Button(
+                text='',
+                size_hint_x=1,
                 background_normal='',
                 background_color=(0.95, 0.95, 0.95, 1),
-                color=(0.15, 0.45, 0.82, 1)
+                opacity=1
             )
-            btn.bind(on_release=lambda x, path=p: setattr(path_input, 'text', path))
-            btn.text_size = (btn.width, None)
-            quick_paths.add_widget(btn)
+            tap.bind(on_release=lambda x, path=p: setattr(path_input, 'text', path))
+            row.add_widget(tap)
+            quick_paths.add_widget(row)
 
         content.add_widget(quick_paths)
 
         # Buttons row
         buttons = BoxLayout(
-            size_hint_y=None, height='40dp', spacing='8dp'
+            size_hint_y=None, height='38dp', spacing='8dp'
         )
 
         popup = None  # Forward ref for closure
@@ -333,6 +357,7 @@ class ScanScreen(BoxLayout, Screen):
 
         buttons.add_widget(Button(
             text='取消',
+            font_size='13sp',
             background_normal='',
             background_color=(0.6, 0.6, 0.6, 1),
             color=(1, 1, 1, 1),
@@ -340,6 +365,7 @@ class ScanScreen(BoxLayout, Screen):
         ))
         buttons.add_widget(Button(
             text='确认',
+            font_size='13sp',
             background_normal='',
             background_color=(0.1, 0.45, 0.82, 1),
             color=(1, 1, 1, 1),
@@ -350,7 +376,7 @@ class ScanScreen(BoxLayout, Screen):
         popup = Popup(
             title='选择扫描目录',
             content=content,
-            size_hint=(0.88, 0.55),
+            size_hint=(0.9, 0.5),
         )
         popup.open()
 
